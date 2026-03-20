@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "TeleBeats",
+    "slug": "telebeats",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio",
+          "audio"
+        ]
+      },
+      "bundleIdentifier": "com.anonymous.telebeats"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F172A"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.telebeats"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-localization"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "44a87252-d195-46af-8e2e-d16b610ddb19"
+      }
+    }
+  }
+}
