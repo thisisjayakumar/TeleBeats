@@ -23,6 +23,7 @@ import { mapSongToTrack } from '../../services/audio/trackMapper';
 import { fisherYatesShuffle } from '../../utils/fisherYatesShuffle';
 import type { TelegramSession } from '../../services/telegram/telegramClient';
 import type { PlayerContextValue } from './playerTypes';
+import { addRecentlyPlayedId } from './recentlyPlayed';
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
@@ -68,6 +69,8 @@ export function PlayerProvider({ children, session }: Props) {
         await TrackPlayer.add([mapSongToTrack(song, uri)]);
         await TrackPlayer.play();
         lastPlayedSongIdRef.current = song.id;
+        // Track recently played (best-effort, do not block UI)
+        void addRecentlyPlayedId(song.id);
 
         setQueue(songQueue);
         setCurrentIndex(index);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View, ActivityIndicator, RefreshControl, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Screen } from "../components/layout/Screen";
@@ -10,6 +10,8 @@ import { syncTelegramChannelMetadata } from "../services/telegram/channelMetadat
 import type { TelegramSession } from "../services/telegram/telegramClient";
 import { usePlayer } from "../features/player";
 import { MINI_PLAYER_HEIGHT_EXPORTED } from "../components/player/MiniPlayer";
+import { ChannelRow } from "../components/home/ChannelRow";
+import { getRecentlyPlayedIds, subscribeRecentlyPlayed } from "../features/player/recentlyPlayed";
 
 type HomeScreenProps = {
   session: TelegramSession;
@@ -21,13 +23,23 @@ export function HomeScreen({ session, onSignOut }: HomeScreenProps) {
   const channels = useMemo(() => getTelegramChannelTargets(), []);
   
   const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
-  const [songs, setSongs] = useState<SongRow[]>([]);
+  const [allSongs, setAllSongs] = useState<SongRow[]>([]);
+  const [recentIds, setRecentIds] = useState<string[]>([]);
   const { playSong, currentSong } = usePlayer();
 
   const loadSongsFromDb = useCallback(async () => {
     const songRepository = getSongRepository();
     const persistedSongs = await songRepository.getAllSongs();
-    setSongs(persistedSongs);
+    setAllSongs(persistedSongs);
+  }, []);
+
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    void getRecentlyPlayedIds().then(setRecentIds);
+    unsub = subscribeRecentlyPlayed(setRecentIds);
+    return () => {
+      if (unsub) unsub();
+    };
   }, []);
 
   const syncChannelMetadata = useCallback(async () => {
@@ -54,36 +66,36 @@ export function HomeScreen({ session, onSignOut }: HomeScreenProps) {
     void syncChannelMetadata();
   }, [loadSongsFromDb, syncChannelMetadata]);
 
-  const renderSong = useCallback(
-    ({ item }: { item: SongRow }) => {
-      const isPlaying = currentSong?.id === item.id;
-      return (
-        <Pressable
-          style={[styles.songRow, isPlaying && styles.songRowActive]}
-          onPress={() => void playSong(item, songs)}
-          android_ripple={{ color: '#FFFFFF10' }}
-        >
-          <View style={styles.thumbnail}>
-            <Text style={styles.thumbnailText}>🎵</Text>
-          </View>
-          <View style={styles.songInfo}>
-            <Text style={[styles.songTitle, isPlaying && styles.songTitleActive]} numberOfLines={1}>
-              {item.title}
-            </Text>
-            <Text style={styles.songArtist} numberOfLines={1}>
-              {item.artist}
-            </Text>
-          </View>
-        </Pressable>
-      );
+  const onPressSong = useCallback(
+    (song: SongRow, queue: SongRow[]) => {
+      void playSong(song, queue);
     },
-    [currentSong?.id, playSong, songs]
+    [playSong]
   );
+
+  const songsByChannel = useMemo(() => {
+    const map = new Map<string, SongRow[]>();
+    for (const s of allSongs) {
+      const arr = map.get(s.channelId) ?? [];
+      arr.push(s);
+      map.set(s.channelId, arr);
+    }
+    return map;
+  }, [allSongs]);
+
+  const recentlyPlayedSongs = useMemo(() => {
+    if (recentIds.length === 0 || allSongs.length === 0) return [];
+    const idToSong = new Map(allSongs.map((s) => [s.id, s] as const));
+    return recentIds.map((id) => idToSong.get(id)).filter(Boolean) as SongRow[];
+  }, [allSongs, recentIds]);
 
   return (
     <Screen>
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Text style={styles.headerTitle}>TeleBeats</Text>
+        <View>
+          <Text style={styles.greetingTop}>{getTimeGreeting()}</Text>
+          <Text style={styles.greetingBottom}>{maskPhone(session.phone)}</Text>
+        </View>
         <Pressable
           style={styles.syncButton}
           onPress={() => void syncChannelMetadata()}
@@ -97,18 +109,30 @@ export function HomeScreen({ session, onSignOut }: HomeScreenProps) {
         </Pressable>
       </View>
 
-      <FlatList
-        data={songs}
-        keyExtractor={(item) => item.id}
-        renderItem={renderSong}
-        contentContainerStyle={[styles.listContent, { paddingBottom: MINI_PLAYER_HEIGHT_EXPORTED + insets.bottom + 20 }]}
-        ListEmptyComponent={
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={isSyncingMetadata} onRefresh={() => void syncChannelMetadata()} />}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: MINI_PLAYER_HEIGHT_EXPORTED + insets.bottom + 20 }]}
+      >
+        {recentlyPlayedSongs.length > 0 && (
+          <ChannelRow title="Recently Played" songs={recentlyPlayedSongs} onPressSong={onPressSong} />
+        )}
+
+        {channels.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No songs found.</Text>
-            <Text style={styles.emptySubtext}>Waiting for sync or channels are empty.</Text>
+            <Text style={styles.emptyText}>No channels configured.</Text>
+            <Text style={styles.emptySubtext}>Configure channels and sync to see songs.</Text>
           </View>
-        }
-      />
+        ) : (
+          channels.map((ch) => (
+            <ChannelRow
+              key={ch}
+              title={ch}
+              songs={songsByChannel.get(ch) ?? []}
+              onPressSong={onPressSong}
+            />
+          ))
+        )}
+      </ScrollView>
     </Screen>
   );
 }
@@ -123,11 +147,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#334155',
   },
-  headerTitle: {
-    color: '#F8FAFC',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
+  greetingTop: { color: '#94A3B8', fontSize: 12 },
+  greetingBottom: { color: '#F8FAFC', fontSize: 20, fontWeight: '700' },
   syncButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -138,45 +159,8 @@ const styles = StyleSheet.create({
     color: '#22C55E',
     fontWeight: '600',
   },
-  listContent: {
-    paddingTop: 16,
-  },
-  songRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  songRowActive: {
-    backgroundColor: 'rgba(34, 197, 94, 0.1)',
-  },
-  thumbnail: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: '#1E293B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  thumbnailText: {
-    fontSize: 24,
-  },
-  songInfo: {
-    flex: 1,
-  },
-  songTitle: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  songTitleActive: {
-    color: '#22C55E',
-  },
-  songArtist: {
-    color: '#94A3B8',
-    fontSize: 14,
+  scrollContent: {
+    paddingTop: 12,
   },
   emptyContainer: {
     padding: 32,
@@ -194,3 +178,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+function getTimeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function maskPhone(phone: string): string {
+  const trimmed = phone.replace(/\s+/g, '');
+  if (trimmed.length <= 4) return trimmed;
+  const last4 = trimmed.slice(-4);
+  return `+*** ${last4}`;
+}
