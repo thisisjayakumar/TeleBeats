@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View, ActivityIndicator, RefreshControl, ScrollView } from "react-native";
+import { Pressable, StyleSheet, Text, View, ActivityIndicator, RefreshControl, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Screen } from "../components/layout/Screen";
@@ -25,7 +25,7 @@ export function HomeScreen({ session, onSignOut }: HomeScreenProps) {
   const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
   const [allSongs, setAllSongs] = useState<SongRow[]>([]);
   const [recentIds, setRecentIds] = useState<string[]>([]);
-  const { playSong, currentSong } = usePlayer();
+  const { playSong } = usePlayer();
 
   const loadSongsFromDb = useCallback(async () => {
     const songRepository = getSongRepository();

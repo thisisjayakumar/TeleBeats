@@ -9,7 +9,17 @@ export type SpotifyEnvConfig = {
   redirectUri: string;
 };
 
+export type SentryEnvConfig = {
+  dsn: string | undefined;
+};
+
 const CHANNEL_LIST_SEPARATOR = ",";
+
+export function getSentryEnvConfig(): SentryEnvConfig {
+  return {
+    dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  };
+}
 
 export function hasTelegramEnvConfig(): boolean {
   return Boolean(

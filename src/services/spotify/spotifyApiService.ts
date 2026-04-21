@@ -1,4 +1,16 @@
 import { getValidAccessToken, SpotifyTokens } from './spotifyAuthService';
+import { retryWithBackoff } from '../../utils/retryWithBackoff';
+import { logger, networkLogger } from '../logging/logger';
+import { getCache } from '../cache';
+
+const SPOTIFY_CACHE_TTL = 5 * 60 * 1000;
+const spotifyCache = getCache('spotify', {
+  l1MaxSize: 50,
+  l2MaxSize: 200,
+  defaultTtl: SPOTIFY_CACHE_TTL,
+});
+
+const CACHEABLE_ENDPOINTS = ['/me/playlists', '/me/tracks', '/playlists/', '/users/'];
 
 export interface SpotifyPlaylist {
   id: string;
@@ -26,26 +38,80 @@ export interface SpotifyTrack {
 const BASE_URL = 'https://api.spotify.com/v1';
 
 async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<Response> {
+  const isCacheable = CACHEABLE_ENDPOINTS.some(e => endpoint.startsWith(e)) && options.method === 'GET';
+  const cacheKey = `spotify:${endpoint}:${JSON.stringify(options)}`;
+
+  if (isCacheable) {
+    const cached = await spotifyCache.get<string>(cacheKey);
+    if (cached) {
+      logger.debug('spotify', `Cache hit for ${endpoint}`);
+      const response = new Response(cached, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      return response;
+    }
+  }
+
+  return retryWithBackoff({
+    task: async () => await performFetch(endpoint, options, isCacheable ? cacheKey : null),
+    maxAttempts: 3,
+    baseDelayMs: 500,
+    maxDelayMs: 4000,
+    shouldRetry: (error) => {
+      if (error instanceof Error) {
+        const is429 = error.message.includes('429');
+        const is5xx = error.message.match(/5\d{2}/);
+        const isNetwork = error.message.includes('network') || error.message.includes('fetch');
+        return is429 || is5xx || isNetwork;
+      }
+      return false;
+    },
+  });
+}
+
+async function performFetch(endpoint: string, options: RequestInit = {}, cacheKey: string | null): Promise<Response> {
   const accessToken = await getValidAccessToken();
   if (!accessToken) {
     throw new Error('Not authenticated with Spotify');
   }
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
+  const url = `${BASE_URL}${endpoint}`;
+  const logResponse = networkLogger.logRequest(options.method || 'GET', url, options.body);
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Spotify API error: ${response.status} - ${error}`);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      logger.error('spotify', `API error: ${response.status}`, new Error(error), { endpoint, status: response.status });
+      logResponse(response.status, error);
+      throw new Error(`Spotify API error: ${response.status} - ${error}`);
+    }
+
+    if (cacheKey && response.ok) {
+      const responseText = await response.text();
+      await spotifyCache.set(cacheKey, responseText, SPOTIFY_CACHE_TTL);
+      logResponse(response.status, responseText);
+      return new Response(responseText, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    logResponse(response.status);
+    return response;
+  } catch (error) {
+    networkLogger.logError(options.method || 'GET', url, error as Error);
+    throw error;
   }
-
-  return response;
 }
 
 function parseImage(images: SpotifyImage[]): string | null {

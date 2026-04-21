@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { SongRow } from '../../db/schema';
 
@@ -8,10 +9,15 @@ type Props = {
   width?: number;
 };
 
-export function SongCard({ song, onPress, thumbnailBase64, width = 140 }: Props) {
+export const SongCard = memo(function SongCard({ song, onPress, thumbnailBase64, width = 140 }: Props) {
   const uri = thumbnailBase64 ? `data:image/jpeg;base64,${thumbnailBase64}` : null;
+
+  const handlePress = useCallback(() => {
+    onPress(song);
+  }, [onPress, song]);
+
   return (
-    <Pressable style={[styles.container, { width }]} onPress={() => onPress(song)} android_ripple={{ color: '#FFFFFF10' }}>
+    <Pressable style={[styles.container, { width }]} onPress={handlePress} android_ripple={{ color: '#FFFFFF10' }}>
       <View style={styles.artwork}>
         {uri ? (
           <Image source={{ uri }} style={styles.artworkImg} />
@@ -25,7 +31,7 @@ export function SongCard({ song, onPress, thumbnailBase64, width = 140 }: Props)
       <Text style={styles.artist} numberOfLines={1}>{song.artist}</Text>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

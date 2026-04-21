@@ -1,0 +1,1 @@
+export { TieredCache, getCache, type CacheConfig, type CacheEntry } from './tieredCache';

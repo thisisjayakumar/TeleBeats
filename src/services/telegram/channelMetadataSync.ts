@@ -11,6 +11,15 @@ export type MetadataSyncRetryState = {
   nextDelayMs: number;
 };
 
+interface ChannelSnapshot {
+  channelId: string;
+  snapshotId: string;
+  lastSyncTime: number;
+}
+
+const SNAPSHOT_CACHE_KEY = 'channel_snapshots';
+const snapshotCache = new Map<string, ChannelSnapshot>();
+
 type SyncTelegramChannelMetadataOptions = {
   session: TelegramSession;
   channels: string[];
@@ -45,7 +54,12 @@ export async function syncTelegramChannelMetadata({
   }
 
   const songs: Song[] = [];
+  const now = Date.now();
+
   for (const channel of channels) {
+    const previousSnapshot = snapshotCache.get(channel);
+    const lastSyncTime = previousSnapshot?.lastSyncTime ?? 0;
+
     const channelSongs = await retryWithBackoff({
       task: () =>
         effectiveGateway.fetchChannelAudioMetadata({
@@ -74,7 +88,19 @@ export async function syncTelegramChannelMetadata({
         });
       },
     });
-    songs.push(...channelSongs);
+
+    const filteredSongs = lastSyncTime > 0
+      ? channelSongs.filter(s => (s.addedAt ?? 0) > lastSyncTime)
+      : channelSongs;
+
+    const snapshotId = generateSnapshotId(channelSongs);
+    snapshotCache.set(channel, {
+      channelId: channel,
+      snapshotId,
+      lastSyncTime: now,
+    });
+
+    songs.push(...filteredSongs);
   }
 
   telemetry.track({
@@ -86,6 +112,21 @@ export async function syncTelegramChannelMetadata({
   });
   onRetryState(null);
   return songs;
+}
+
+function generateSnapshotId(songs: Song[]): string {
+  if (songs.length === 0) return '';
+  const firstId = songs[0].messageId;
+  const lastId = songs[songs.length - 1].messageId;
+  return `${firstId}-${lastId}-${songs.length}`;
+}
+
+export function getChannelSnapshot(channelId: string): ChannelSnapshot | undefined {
+  return snapshotCache.get(channelId);
+}
+
+export function clearSnapshots(): void {
+  snapshotCache.clear();
 }
 
 function getChannelMetadataErrorMessage(error: unknown): string {

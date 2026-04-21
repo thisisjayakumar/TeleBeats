@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import type { SongRow } from '../../db/schema';
 import { SongCard } from './SongCard';
@@ -8,8 +9,13 @@ type Props = {
   onPressSong: (song: SongRow, all: SongRow[]) => void;
 };
 
-export function ChannelRow({ title, songs, onPressSong }: Props) {
+export const ChannelRow = memo(function ChannelRow({ title, songs, onPressSong }: Props) {
+  const handlePress = useCallback((song: SongRow) => {
+    onPressSong(song, songs);
+  }, [onPressSong, songs]);
+
   if (songs.length === 0) return null;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>
@@ -19,13 +25,17 @@ export function ChannelRow({ title, songs, onPressSong }: Props) {
         keyExtractor={(s) => s.id}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 16 }}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        windowSize={5}
+        removeClippedSubviews={true}
         renderItem={({ item }) => (
-          <SongCard song={item} onPress={(song) => onPressSong(song, songs)} thumbnailBase64={null} />
+          <SongCard song={item} onPress={handlePress} thumbnailBase64={null} />
         )}
       />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: { marginTop: 16, marginBottom: 8 },
