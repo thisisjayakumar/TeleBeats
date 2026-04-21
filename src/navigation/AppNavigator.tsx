@@ -1,4 +1,4 @@
-import { hasTelegramEnvConfig } from "../config/env";
+import { hasTelegramEnvConfig, hasSpotifyEnvConfig } from "../config/env";
 import { useTelegramAuth } from "../features/auth";
 import { PlayerProvider } from "../features/player";
 import { BootstrappingScreen } from "../screens/BootstrappingScreen";
@@ -12,6 +12,29 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import SearchScreen from "../screens/SearchScreen";
 import { LibraryScreen } from "../screens/LibraryScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
+import { SpotifyConnectScreen } from "../screens/SpotifyConnectScreen";
+import { SpotifyLibraryScreen } from "../screens/SpotifyLibraryScreen";
+import { SpotifyPlaylistDetailScreen } from "../screens/SpotifyPlaylistDetailScreen";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+
+export type SpotifyStackParamList = {
+  SpotifyConnect: undefined;
+  SpotifyLibrary: undefined;
+  SpotifyPlaylistDetail: { playlistId: string; playlistName: string };
+};
+
+const SpotifyStack = createNativeStackNavigator<SpotifyStackParamList>();
+const Tab = createBottomTabNavigator();
+
+function SpotifyNavigator() {
+  return (
+    <SpotifyStack.Navigator screenOptions={{ headerShown: false }}>
+      <SpotifyStack.Screen name="SpotifyConnect" component={SpotifyConnectScreen} />
+      <SpotifyStack.Screen name="SpotifyLibrary" component={SpotifyLibraryScreen} />
+      <SpotifyStack.Screen name="SpotifyPlaylistDetail" component={SpotifyPlaylistDetailScreen} />
+    </SpotifyStack.Navigator>
+  );
+}
 
 export function AppNavigator() {
   const auth = useTelegramAuth();
@@ -48,7 +71,8 @@ function AuthenticatedApp({
   session: TelegramSession;
   onSignOut: () => Promise<void>;
 }) {
-  const Tab = createBottomTabNavigator();
+  const hasSpotify = hasSpotifyEnvConfig();
+
   return (
     <PlayerProvider session={session}>
       <Tab.Navigator
@@ -64,6 +88,9 @@ function AuthenticatedApp({
         </Tab.Screen>
         <Tab.Screen name="Search" component={SearchScreen} />
         <Tab.Screen name="Library" component={LibraryScreen} />
+        {hasSpotify && (
+          <Tab.Screen name="Spotify" component={SpotifyNavigator} />
+        )}
         <Tab.Screen name="Profile">
           {() => <ProfileScreen session={session} onSignOut={onSignOut} />}
         </Tab.Screen>

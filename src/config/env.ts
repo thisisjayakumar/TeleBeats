@@ -3,6 +3,12 @@ export type TelegramEnvConfig = {
   apiHash: string;
 };
 
+export type SpotifyEnvConfig = {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+};
+
 const CHANNEL_LIST_SEPARATOR = ",";
 
 export function hasTelegramEnvConfig(): boolean {
@@ -43,4 +49,30 @@ export function getTelegramChannelTargets(): string[] {
     .split(CHANNEL_LIST_SEPARATOR)
     .map((entry: string) => entry.trim())
     .filter((entry: string) => entry.length > 0);
+}
+
+export function hasSpotifyEnvConfig(): boolean {
+  return Boolean(
+    process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_ID &&
+      process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_SECRET
+  );
+}
+
+export function getSpotifyEnvConfig(): SpotifyEnvConfig {
+  const clientId = process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    return {
+      clientId: '',
+      clientSecret: '',
+      redirectUri: 'telebeats://spotify-callback',
+    };
+  }
+
+  return {
+    clientId,
+    clientSecret,
+    redirectUri: 'telebeats://spotify-callback',
+  };
 }
